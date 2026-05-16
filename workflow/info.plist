@@ -28,7 +28,7 @@
 				<key>modifiersubtext</key>
 				<string>美式发音</string>
 				<key>vitoclose</key>
-				<false/>
+				<true/>
 			</dict>
 		</array>
 	</dict>
