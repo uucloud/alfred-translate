@@ -20,6 +20,16 @@
 				<key>vitoclose</key>
 				<false/>
 			</dict>
+			<dict>
+				<key>destinationuid</key>
+				<string>speak-original</string>
+				<key>modifiers</key>
+				<integer>1048576</integer>
+				<key>modifiersubtext</key>
+				<string>美式发音</string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
 		</array>
 	</dict>
 	<key>createdby</key>
@@ -84,9 +94,32 @@
 			<key>version</key>
 			<integer>1</integer>
 		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>concurrently</key>
+				<false/>
+				<key>escaping</key>
+				<integer>102</integer>
+				<key>script</key>
+				<string>./alfred-translate speak "{query}"</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>type</key>
+				<integer>0</integer>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.action.script</string>
+			<key>uid</key>
+			<string>speak-original</string>
+			<key>version</key>
+			<integer>2</integer>
+		</dict>
 	</array>
 	<key>readme</key>
-	<string>Type `tr text` in Alfred. Press Enter to copy the translated text. Configure DEEPL_AUTH_KEY to use DeepL; otherwise Google Translate is used.</string>
+	<string>Type `tr text` in Alfred. Press Enter to copy the translated text. Press Command+Enter to speak the original text with an American English voice. Configure DEEPL_AUTH_KEY to use DeepL; otherwise Google Translate is used.</string>
 	<key>uidata</key>
 	<dict>
 		<key>copy-translation</key>
@@ -95,6 +128,13 @@
 			<integer>420</integer>
 			<key>ypos</key>
 			<integer>180</integer>
+		</dict>
+		<key>speak-original</key>
+		<dict>
+			<key>xpos</key>
+			<integer>420</integer>
+			<key>ypos</key>
+			<integer>320</integer>
 		</dict>
 		<key>translate-script-filter</key>
 		<dict>
@@ -112,6 +152,8 @@
 		<string>auto</string>
 		<key>ALFRED_TRANSLATE_TARGET</key>
 		<string>auto</string>
+		<key>ALFRED_TRANSLATE_VOICE</key>
+		<string>Samantha</string>
 		<key>DEEPL_AUTH_KEY</key>
 		<string></string>
 	</dict>

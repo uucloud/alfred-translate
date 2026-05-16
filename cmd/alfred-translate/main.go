@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -72,6 +73,8 @@ func main() {
 	switch os.Args[1] {
 	case "filter":
 		err = runFilter(os.Args[2:])
+	case "speak":
+		err = runSpeak(os.Args[2:])
 	case "translate":
 		err = runTranslate(os.Args[2:])
 	default:
@@ -130,7 +133,7 @@ func runFilter(args []string) error {
 				Mods: map[string]alfredMod{
 					"cmd": {
 						Arg:      query,
-						Subtitle: "复制原文",
+						Subtitle: "美式发音：" + oneLine(query),
 					},
 				},
 			},
@@ -138,6 +141,23 @@ func runFilter(args []string) error {
 	})
 
 	return nil
+}
+
+func runSpeak(args []string) error {
+	text := strings.TrimSpace(strings.Join(args, " "))
+	if text == "" {
+		return errors.New("missing text to speak")
+	}
+
+	voice := getenv("ALFRED_TRANSLATE_VOICE", "Samantha")
+	cmdArgs := []string{"-v", voice}
+	if rate := strings.TrimSpace(os.Getenv("ALFRED_TRANSLATE_RATE")); rate != "" {
+		cmdArgs = append(cmdArgs, "-r", rate)
+	}
+	cmdArgs = append(cmdArgs, text)
+
+	cmd := exec.Command("/usr/bin/say", cmdArgs...)
+	return cmd.Run()
 }
 
 func runTranslate(args []string) error {
@@ -500,6 +520,7 @@ func writeAlfred(response alfredResponse) {
 func writeUsage(out io.Writer) {
 	fmt.Fprintln(out, "usage:")
 	fmt.Fprintln(out, "  alfred-translate filter [flags] <text>")
+	fmt.Fprintln(out, "  alfred-translate speak <text>")
 	fmt.Fprintln(out, "  alfred-translate translate [flags] <text>")
 }
 
