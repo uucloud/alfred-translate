@@ -1,0 +1,4 @@
+dist/
+workflow/alfred-translate
+.cache/
+.DS_Store
