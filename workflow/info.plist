@@ -119,7 +119,7 @@
 		</dict>
 	</array>
 	<key>readme</key>
-	<string>Type `tr text` in Alfred. Press Enter to copy the translated text. Press Command+Enter to speak the original text with an American English voice. Configure DEEPL_AUTH_KEY to use DeepL; otherwise Google Translate is used.</string>
+	<string>Type `tr text` in Alfred. Translation runs after typing pauses to avoid rate limits. Press Enter to copy the translated text. Press Command+Enter to speak the original text with an American English voice. Configure DEEPL_AUTH_KEY to use DeepL; otherwise Google Translate is used.</string>
 	<key>uidata</key>
 	<dict>
 		<key>copy-translation</key>
@@ -152,6 +152,10 @@
 		<string>auto</string>
 		<key>ALFRED_TRANSLATE_TARGET</key>
 		<string>auto</string>
+		<key>ALFRED_TRANSLATE_DEBOUNCE_MS</key>
+		<string>700</string>
+		<key>ALFRED_TRANSLATE_MIN_CHARS</key>
+		<string>2</string>
 		<key>ALFRED_TRANSLATE_VOICE</key>
 		<string>Samantha</string>
 		<key>DEEPL_AUTH_KEY</key>

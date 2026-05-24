@@ -20,8 +20,11 @@ import (
 )
 
 const (
-	defaultTimeout = 8 * time.Second
-	cacheTTL       = 7 * 24 * time.Hour
+	defaultTimeout      = 8 * time.Second
+	defaultDebounce     = 700 * time.Millisecond
+	minimumRerunSeconds = 0.1
+	maximumRerunSeconds = 5.0
+	cacheTTL            = 7 * 24 * time.Hour
 )
 
 type config struct {
@@ -29,6 +32,8 @@ type config struct {
 	SourceLang string
 	TargetLang string
 	Timeout    time.Duration
+	Debounce   time.Duration
+	MinChars   int
 	CacheDir   string
 }
 
@@ -41,6 +46,7 @@ type translation struct {
 
 type alfredResponse struct {
 	Items []alfredItem `json:"items"`
+	Rerun float64      `json:"rerun,omitempty"`
 }
 
 type alfredItem struct {
@@ -61,6 +67,11 @@ type alfredText struct {
 type alfredMod struct {
 	Arg      string `json:"arg,omitempty"`
 	Subtitle string `json:"subtitle,omitempty"`
+}
+
+type filterState struct {
+	Query     string `json:"query"`
+	ChangedAt int64  `json:"changed_at"`
 }
 
 func main() {
@@ -103,6 +114,21 @@ func runFilter(args []string) error {
 		)}})
 		return nil
 	}
+	if runeCount(query) < cfg.MinChars {
+		writeAlfred(alfredResponse{Items: []alfredItem{invalidItem(
+			"继续输入",
+			fmt.Sprintf("至少输入 %d 个字符后才会查询，避免触发翻译接口限流", cfg.MinChars),
+		)}})
+		return nil
+	}
+	if cached, ok := readCache(cfg, query); ok {
+		writeTranslationResult(cfg, query, cached)
+		return nil
+	}
+	if wait, ok := shouldWaitForStableQuery(cfg, query, time.Now()); ok {
+		writeAlfred(waitingResponse(query, wait))
+		return nil
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	defer cancel()
@@ -113,7 +139,12 @@ func runFilter(args []string) error {
 		return nil
 	}
 
-	subtitle := fmt.Sprintf("%s: %s -> %s | Enter 复制译文 | Cmd 复制原文",
+	writeTranslationResult(cfg, query, result)
+	return nil
+}
+
+func writeTranslationResult(cfg config, query string, result translation) {
+	subtitle := fmt.Sprintf("%s: %s -> %s | Enter 复制译文 | Cmd 发音",
 		result.Provider,
 		displayLang(result.SourceLang),
 		displayLang(result.TargetLang),
@@ -139,8 +170,6 @@ func runFilter(args []string) error {
 			},
 		},
 	})
-
-	return nil
 }
 
 func runSpeak(args []string) error {
@@ -193,6 +222,8 @@ func parseFlags(name string, args []string) (config, string, error) {
 	fs.StringVar(&cfg.TargetLang, "target", getenv("ALFRED_TRANSLATE_TARGET", "auto"), "target language")
 
 	timeoutMS := fs.Int("timeout-ms", getenvInt("ALFRED_TRANSLATE_TIMEOUT_MS", int(defaultTimeout/time.Millisecond)), "request timeout in milliseconds")
+	debounceMS := fs.Int("debounce-ms", getenvInt("ALFRED_TRANSLATE_DEBOUNCE_MS", int(defaultDebounce/time.Millisecond)), "filter debounce in milliseconds")
+	minChars := fs.Int("min-chars", getenvInt("ALFRED_TRANSLATE_MIN_CHARS", 2), "minimum query length before translation")
 	if err := fs.Parse(args); err != nil {
 		return cfg, "", err
 	}
@@ -201,6 +232,11 @@ func parseFlags(name string, args []string) (config, string, error) {
 	cfg.SourceLang = normalizeLang(cfg.SourceLang)
 	cfg.TargetLang = normalizeLang(cfg.TargetLang)
 	cfg.Timeout = time.Duration(*timeoutMS) * time.Millisecond
+	cfg.Debounce = time.Duration(*debounceMS) * time.Millisecond
+	cfg.MinChars = *minChars
+	if cfg.MinChars < 1 {
+		cfg.MinChars = 1
+	}
 	cfg.CacheDir = cacheDir()
 
 	query := strings.Join(fs.Args(), " ")
@@ -214,6 +250,77 @@ func parseFlags(name string, args []string) (config, string, error) {
 		cfg.Provider = "auto"
 	}
 	return cfg, query, nil
+}
+
+func shouldWaitForStableQuery(cfg config, query string, now time.Time) (time.Duration, bool) {
+	if cfg.Debounce <= 0 || cfg.CacheDir == "" {
+		return 0, false
+	}
+
+	state, ok := readFilterState(cfg)
+	if !ok || state.Query != query {
+		writeFilterState(cfg, filterState{Query: query, ChangedAt: now.UnixMilli()})
+		return cfg.Debounce, true
+	}
+
+	changedAt := time.UnixMilli(state.ChangedAt)
+	elapsed := now.Sub(changedAt)
+	if elapsed < 0 {
+		return cfg.Debounce, true
+	}
+	if elapsed < cfg.Debounce {
+		return cfg.Debounce - elapsed, true
+	}
+	return 0, false
+}
+
+func readFilterState(cfg config) (filterState, bool) {
+	body, err := os.ReadFile(filterStatePath(cfg))
+	if err != nil {
+		return filterState{}, false
+	}
+
+	var state filterState
+	if err := json.Unmarshal(body, &state); err != nil {
+		return filterState{}, false
+	}
+	return state, state.Query != "" && state.ChangedAt > 0
+}
+
+func writeFilterState(cfg config, state filterState) {
+	if err := os.MkdirAll(cfg.CacheDir, 0o755); err != nil {
+		return
+	}
+	body, err := json.Marshal(state)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filterStatePath(cfg), body, 0o644)
+}
+
+func filterStatePath(cfg config) string {
+	return filepath.Join(cfg.CacheDir, "filter-state.json")
+}
+
+func waitingResponse(query string, wait time.Duration) alfredResponse {
+	return alfredResponse{
+		Items: []alfredItem{invalidItem(
+			"等待输入停止",
+			fmt.Sprintf("准备查询「%s」；%.1f 秒后自动翻译", oneLine(query), rerunSeconds(wait)),
+		)},
+		Rerun: rerunSeconds(wait),
+	}
+}
+
+func rerunSeconds(wait time.Duration) float64 {
+	seconds := float64(wait) / float64(time.Second)
+	if seconds < minimumRerunSeconds {
+		return minimumRerunSeconds
+	}
+	if seconds > maximumRerunSeconds {
+		return maximumRerunSeconds
+	}
+	return seconds
 }
 
 func translateWithCache(ctx context.Context, cfg config, text string) (translation, error) {
@@ -501,6 +608,10 @@ func oneLine(text string) string {
 		return text
 	}
 	return strings.Join(fields, " ")
+}
+
+func runeCount(text string) int {
+	return len([]rune(text))
 }
 
 func invalidItem(title, subtitle string) alfredItem {
